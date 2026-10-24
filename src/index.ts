@@ -1,8 +1,5 @@
 import { WebSocket, WebSocketServer, type RawData } from "ws";
-//import { randomUUIDv5 } from "bun";
 import { randomUUID } from "crypto";
-import { parse } from "path";
-import { error } from "console";
 
 type SocketData = {
     userId : string;
@@ -39,7 +36,8 @@ type MembersMessage = {
 
 const socketData = new WeakMap<WebSocket,SocketData>(); //socket meta data
 const rooms = new Map<string, Set<WebSocket>>(); //each room has roomid and bunch of sockets
-const wss = new WebSocketServer({port : 8080});
+const port = Number(process.env.PORT ?? 8080);
+const wss = new WebSocketServer({ port });
 
 function sendMemberNames(roomId : string){
     const room = rooms.get(roomId);
@@ -221,4 +219,4 @@ wss.on("connection",(socket,request) => {
 
 })
 
-console.log("Hello via Bun!");
+console.log(`WebSocket server listening on port ${port}`);
