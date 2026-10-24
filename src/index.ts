@@ -16,6 +16,8 @@ type ClientMessage = {
 }|{
     type : "chat";
     text : string;
+}|{
+    type : "members"
 }
 
 type ChatMessage = {
@@ -27,10 +29,37 @@ type ChatMessage = {
     timestamp : number;
 }
 
+type MembersMessage = {
+    type: "members";
+    members: Array<{
+        userId: string;
+        userName: string;
+    }>;
+};
+
 const socketData = new WeakMap<WebSocket,SocketData>(); //socket meta data
 const rooms = new Map<string, Set<WebSocket>>(); //each room has roomid and bunch of sockets
 const wss = new WebSocketServer({port : 8080});
 
+function sendMemberNames(roomId : string){
+    const room = rooms.get(roomId);
+    if(!room) return;
+
+    const membersMessage: MembersMessage = {
+        type: "members",
+        members: [...room]
+            .map((client) => socketData.get(client))
+            .filter((member): member is SocketData => Boolean(member))
+            .map(({ userId, userName }) => ({ userId, userName })),
+    };
+    const stringifiedMessage = JSON.stringify(membersMessage);
+
+    for(const client of room){
+        if(client.readyState === WebSocket.OPEN){
+            client.send(stringifiedMessage);
+        }
+    }
+}
 
 function isClientMessage(data: unknown): data is ClientMessage{
     if(typeof data !== "object" || data == null){
@@ -43,7 +72,7 @@ function isClientMessage(data: unknown): data is ClientMessage{
     if(message.type == "chat"){
         return typeof message.text === "string" && message.text.trim().length > 0;
     }
-    return false;
+    return message.type === "members";
 }
 
 function sendError(socket : WebSocket , message: string){
@@ -89,7 +118,10 @@ function joinRoom(socket: WebSocket, roomId : string){
     socket.send(JSON.stringify({
         type: "joined",
         roomId,
+        userId: data.userId
+
     }))
+    sendMemberNames(roomId);
     console.log(`${data.userName} joined ${roomId}`);
 }
 
@@ -165,6 +197,15 @@ wss.on("connection",(socket,request) => {
                 currentUser.roomId,
                 chatmsg
             );
+            return;
+        }
+        if(parsed.type === "members"){
+            const currentUser = socketData.get(socket);
+            if(!currentUser?.roomId){
+                sendError(socket,"Join a room first");
+                return;
+            }
+            sendMemberNames(currentUser.roomId);
 
         }
     })
